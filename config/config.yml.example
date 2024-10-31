@@ -1,7 +1,7 @@
 # Claude CLI Configuration
 
 # Model settings
-model: claude-3-sonnet
+model: claude-3-sonnet-20240229
 context_lines: 1000
 
 # Safety settings
