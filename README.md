@@ -1,114 +1,130 @@
-# Claude CLI Installation Guide
+# Claude CLI
 
-A natural language interface for your terminal, powered by Claude.
+A natural language interface for your terminal, powered by Claude. Convert English commands into bash commands using Claude's AI capabilities.
 
-## One-Line Quick Install
+## Quick Install
+
+One-line installation:
 ```bash
-mkdir -p ~/.claude-cli && curl -o ~/.claude-cli/claude-cli.sh https://raw.githubusercontent.com/your-repo/claude-cli/main/claude-cli.sh && echo 'source ~/.claude-cli/claude-cli.sh' >> ~/.bashrc && source ~/.bashrc
+curl -sSL https://raw.githubusercontent.com/goodlux/claude-cli/main/install.sh | bash
 ```
+
+After installation:
+1. Edit `~/.claude-cli/credentials` and add your Anthropic API key
+2. Start a new terminal or run: `source ~/.claude-cli/bin/claude-cli`
+
+## Quick Uninstall
+
+Remove Claude CLI with:
+```bash
+rm -rf ~/.claude-cli && sed -i.bak '/claude-cli/d' ~/.bashrc ~/.zshrc
+```
+This removes all Claude CLI files and configuration, and removes the source line from your shell config.
 
 ## Manual Installation
 
-### 1. Prerequisites
-- `curl` and `jq` installed
+If you prefer to inspect everything first:
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/goodlux/claude-cli.git
+   cd claude-cli
+   ```
+
+2. Run the installer:
+   ```bash
+   ./install.sh
+   ```
+
+3. Or install manually:
+   ```bash
+   # Create directories
+   mkdir -p ~/.claude-cli/bin/lib ~/.claude-cli/cache
+   
+   # Copy files
+   cp bin/claude-cli ~/.claude-cli/bin/
+   cp bin/lib/* ~/.claude-cli/bin/lib/
+   cp config/config.yml.example ~/.claude-cli/config.yml
+   
+   # Create credentials file
+   echo "ANTHROPIC_API_KEY=your_api_key_here" > ~/.claude-cli/credentials
+   
+   # Set permissions
+   chmod 755 ~/.claude-cli/bin/claude-cli ~/.claude-cli/bin/lib/*
+   chmod 600 ~/.claude-cli/credentials
+   chmod 644 ~/.claude-cli/config.yml
+   
+   # Add to shell config
+   echo 'source ~/.claude-cli/bin/claude-cli' >> ~/.bashrc  # or ~/.zshrc
+   ```
+
+## Prerequisites
+
+- `curl` and `jq` for API interactions
+- `yq` for YAML configuration management
 - An Anthropic API key from https://console.anthropic.com/
-
-### 2. Setup Steps
-```bash
-# Create directory
-mkdir -p ~/.claude-cli
-
-# Create and edit the credentials file
-cat > ~/.claude-cli/credentials << EOL
-# Anthropic API credentials
-ANTHROPIC_API_KEY=your_api_key_here
-EOL
-
-# Set proper permissions
-chmod 600 ~/.claude-cli/credentials
-
-# Add to your shell config
-echo 'source ~/.claude-cli/claude-cli.sh' >> ~/.bashrc  # or ~/.zshrc for Zsh
-source ~/.bashrc  # or source ~/.zshrc
-```
 
 ## Usage
 
-You can use the CLI in two ways:
+Convert natural language to commands:
 ```bash
-ccli "your natural language request"        # Short version
-claude_cli "your natural language request"  # Full version
+ccli "find all PDFs modified in the last week"
+ccli "show me the largest files in this directory"
 ```
 
-### Examples
+Manage settings:
 ```bash
-ccli "find all PDFs modified this week"
-ccli "show me the largest files in this folder"
-ccli "compress all images in current directory"
+# View all settings
+claude_settings get
+
+# Change a setting
+claude_settings set model claude-3-sonnet-20240229
+
+# Get help
+claude_settings help
 ```
 
-### Features
+## Features
+
 - Natural language → bash command conversion
-- Safety confirmation before execution
-- Option to edit suggested commands
+- System-aware context (knows your tools and OS)
+- Command confirmation and editing
 - Command history tracking
-- Git-aware context
 - Tab completion from history
+- Settings management
+- Configuration persistence
 
-### Tips
-- Be specific in your requests
-- Use quotes around your request to handle spaces
-- The tool provides context about your current directory and git status
-- Type `e` at the confirmation prompt to edit the suggested command
+## Configuration
 
-### Command Options
-- `y` - Execute the command
-- `n` - Cancel execution
-- `e` - Edit the command before execution
+Edit `~/.claude-cli/config.yml` or use the `claude_settings` command to customize:
+- Model selection
+- Context lines
+- Safety settings
+- API configuration
+- OS-specific settings
 
 ## Troubleshooting
 
-### Common Issues
 1. "API key not configured":
    ```bash
-   nano ~/.claude-cli/credentials
-   # Replace your_api_key_here with actual key
+   edit ~/.claude-cli/credentials  # Add your API key
    ```
 
 2. "Command not found":
    ```bash
-   source ~/.bashrc  # Reload shell config
+   source ~/.bashrc  # or ~/.zshrc
    ```
 
-3. "jq not found":
+3. Missing dependencies:
    ```bash
    # Ubuntu/Debian
-   sudo apt-get install jq
+   sudo apt-get install curl jq yq
    
    # macOS
-   brew install jq
+   brew install curl jq yq
    ```
 
-### Updating
-To update the CLI, simply replace the script file and reload:
-```bash
-# Replace claude-cli.sh with new version
-source ~/.claude-cli/claude-cli.sh
-```
-
-### Uninstalling
-```bash
-rm -rf ~/.claude-cli
-# Remove the source line from ~/.bashrc or ~/.zshrc
-```
-
-## Configuration
-Edit `~/.claude-cli/config.yml` to customize:
-- Model selection
-- Context lines
-- Safety settings
-- API timeout
-
 ## Support
-- Report issues: [GitHub Issues](https://github.com/your-repo/claude-cli/issues)
+
+- Report issues: [GitHub Issues](https://github.com/goodlux/claude-cli/issues)
 - API documentation: https://docs.anthropic.com/

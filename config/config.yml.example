@@ -4,58 +4,26 @@
 model: claude-3-sonnet-20240229
 context_lines: 1000
 
+# API settings
+api:
+  timeout: 30
+  max_retries: 3
+  endpoint: https://api.anthropic.com/v1/messages
+  version: 2023-06-01
+
 # Safety settings
 safety:
-  # Always confirm before executing destructive commands (rm, mv, etc)
   confirm_destructive: true
-  # If true, only shows commands without executing them
   dry_run: false
-  # Commands that require confirmation regardless of destructive flag
-  protected_commands:
-    - rm
-    - mv
-    - dd
-    - chmod
-    - chown
+
+# OS-specific settings
+os:
+  macos:
+    date_recent: "date -v-7d"
+  linux:
+    date_recent: "date -d '-7 days'"
 
 # History settings
 history:
-  # Maximum number of commands to keep in history
   max_entries: 1000
-  # Save timestamps with history entries
-  save_timestamps: true
-  # History file location (relative to ~/.claude-cli)
   file: history.txt
-
-# API settings
-api:
-  # Timeout in seconds for API calls
-  timeout: 30
-  # Number of retries for failed API calls
-  max_retries: 3
-  # API endpoint
-  endpoint: https://api.anthropic.com/v1/messages
-  # API version header
-  version: 2023-06-01
-
-# Display settings
-display:
-  # Show command explanations
-  show_explanations: true
-  # Show confirmation prompts
-  show_confirmations: true
-  # Color output (auto/always/never)
-  color: auto
-  # Verbose output
-  verbose: false
-
-# Context settings
-context:
-  # Include git information if in a repository
-  include_git: true
-  # Include environment variables
-  include_env: true
-  # Include recent command history
-  include_history: true
-  # Maximum lines of context to include
-  max_lines: 1000
