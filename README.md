@@ -15,11 +15,20 @@ After installation:
 
 ## Quick Uninstall
 
-Remove Claude CLI with:
+One-line uninstallation:
 ```bash
-rm -rf ~/.claude-cli && sed -i.bak '/claude-cli/d' ~/.bashrc ~/.zshrc
+curl -sSL https://raw.githubusercontent.com/goodlux/claude-cli/main/uninstall.sh | bash
 ```
-This removes all Claude CLI files and configuration, and removes the source line from your shell config.
+
+Or if you have the repository:
+```bash
+./uninstall.sh
+```
+
+After uninstalling, start a new terminal session or reload your shell configuration:
+```bash
+source ~/.bashrc  # or ~/.zshrc if using zsh
+```
 
 ## Manual Installation
 
@@ -103,6 +112,18 @@ Edit `~/.claude-cli/config.yml` or use the `claude_settings` command to customiz
 - API configuration
 - OS-specific settings
 
+Example settings management:
+```bash
+# View current configuration
+claude_settings get
+
+# Change model
+claude_settings set model claude-3-sonnet-20240229
+
+# Adjust context lines
+claude_settings set context_lines 500
+```
+
 ## Troubleshooting
 
 1. "API key not configured":
@@ -124,7 +145,29 @@ Edit `~/.claude-cli/config.yml` or use the `claude_settings` command to customiz
    brew install curl jq yq
    ```
 
+4. If uninstallation doesn't fully remove the command:
+   - Start a new terminal session, or
+   - Source your shell configuration:
+     ```bash
+     source ~/.bashrc  # or ~/.zshrc if using zsh
+     ```
+
+## Security Note
+
+- Your API key is stored locally in `~/.claude-cli/credentials`
+- The credentials file is created with restricted permissions (600)
+- No data is stored outside your local machine
+- All API calls are made directly to Anthropic's API
+
 ## Support
 
 - Report issues: [GitHub Issues](https://github.com/goodlux/claude-cli/issues)
 - API documentation: https://docs.anthropic.com/
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+MIT License - feel free to use this in your own projects!

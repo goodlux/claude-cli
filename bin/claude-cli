@@ -53,7 +53,6 @@ call_claude_api() {
     local prompt="$1"
     local context="$2"
 
-    echo "=============== SENDING TO API ==============="
     local request_json='{
         "model": "'"$CLAUDE_CLI_MODEL"'",
         "max_tokens": 1024,
@@ -63,20 +62,14 @@ call_claude_api() {
             "content": "Convert to bash command: '"$prompt"'"
         }]
     }'
-    echo "$request_json"
-    echo "============================================"
 
-    # Make API call without verbose output
+    # Make API call
     local response
     response=$(curl -s "https://api.anthropic.com/v1/messages" \
         -H "x-api-key: $ANTHROPIC_API_KEY" \
         -H "anthropic-version: 2023-06-01" \
         -H "content-type: application/json" \
         -d "$request_json")
-
-    echo "=============== API RESPONSE ==============="
-    echo "$response"
-    echo "============================================"
 
     # Check for error response
     if echo "$response" | jq -e '.error' >/dev/null 2>&1; then
@@ -103,12 +96,14 @@ call_claude_api() {
 confirm_execution() {
     local cmd="$1"
     local explanation="$2"
-
-    echo -e "\nSuggested command: $cmd"
-    echo -e "Explanation: $explanation\n"
-
+    
+    echo -e "\nSuggested command (this is a test delete me later):"
+    echo -e "\033[1m$cmd\033[0m"  # Bold command
+    echo -e "\nExplanation:"
+    echo -e "$explanation\n"  # Extra newlines for readability
+    
     read -p "Execute this command? [y/n/e(edit)] " choice
-
+    
     case "$choice" in
         y|Y) return 0 ;;
         n|N) return 1 ;;
@@ -135,31 +130,23 @@ claude_cli() {
 
     # Capture the natural language request
     local request="$*"
-
-    echo "DEBUG: Entering claude_cli function"
-    echo "DEBUG: Request received: $request"
-    echo "DEBUG: About to call API..."
-
+    
     # Get terminal context
     local context=$(get_terminal_context)
-
+    
     # Call Claude API
     local response=$(call_claude_api "$request" "$context")
-
-    echo "DEBUG: API call completed"
-
+    
     # Parse response
     local suggested_cmd=$(echo "$response" | grep '^suggested_command: ' | cut -d' ' -f2-)
     local explanation=$(echo "$response" | grep '^explanation: ' | cut -d' ' -f2-)
-
-    echo "DEBUG: Parsed response - command: $suggested_cmd"
-
+    
     # Confirm and execute
     if [ -n "$suggested_cmd" ]; then
         if confirm_execution "$suggested_cmd" "$explanation"; then
             # Log to history
             echo "$(date '+%Y-%m-%d %H:%M:%S')|$request|$suggested_cmd" >> "$HISTORY_FILE"
-
+            
             # Execute the command
             eval "$suggested_cmd"
         fi
@@ -175,7 +162,7 @@ alias ccli='claude_cli'
 _claude_cli_complete() {
     local cur=${COMP_WORDS[COMP_CWORD]}
     local prev_cmds=$(tail -n 10 "$HISTORY_FILE" 2>/dev/null | cut -d'|' -f2 | sort -u)
-
+    
     COMPREPLY=($(compgen -W "$prev_cmds" -- "$cur"))
 }
 
