@@ -1,12 +1,9 @@
 #!/bin/bash
 set -e
 
-# Debug mode - needs to be set before any function definitions
-if [ -n "$DEBUG" ] || [ "$1" = "--debug" ]; then
-    DEBUG=true
-else
-    DEBUG=false
-fi
+# Debug mode
+DEBUG=false
+[ "$1" = "--debug" ] && DEBUG=true
 
 # Configuration
 INSTALL_DIR="$HOME/.claude-cli"
@@ -14,18 +11,41 @@ REPO_URL="https://raw.githubusercontent.com/goodlux/claude-cli/main"
 SCRIPT_FILES=("bin/claude-cli" "bin/lib/context.sh" "bin/lib/settings.sh" "bin/lib/shell.sh")
 CONFIG_FILE="config/config.yml.example"
 
-# Basic utility functions - must be defined first
+# ASCII Art function
+show_terminal_art() {
+    local BLUE=$(tput setaf 4)
+    local RESET=$(tput sgr0)
+    echo
+    echo "${BLUE}"
+    cat << "EOF"
+▄████▄   ██▓    ▄▄▄       █    ██  ▓█████▄ ▓█████ 
+▒██▀ ▀█  ▓██▒   ▒████▄     ██  ▓██▒▒██▀ ██▌▓█   ▀ 
+▒▓█    ▄ ▒██░   ▒██  ▀█▄  ▓██  ▒██░░██   █▌▒███   
+▒▓▓▄ ▄██▒▒██░   ░██▄▄▄▄██ ▓▓█  ░██░░▓█▄   ▌▒▓█  ▄ 
+▒ ▓███▀ ░░██████▒▓█   ▓██▒▒▒█████▓ ░▒████▓ ░▒████▒
+░ ░▒ ▒  ░░ ▒░▓  ░▒▒   ▓▒█░░▒▓▒ ▒ ▒  ▒▒▓  ▒ ░░ ▒░ ░
+  ░  ▒   ░ ░ ▒  ░ ▒   ▒▒ ░░░▒░ ░ ░  ░ ▒  ▒  ░ ░  ░
+░          ░ ░    ░   ▒    ░░░ ░ ░  ░ ░  ░    ░   
+░ ░          ░  ░     ░  ░   ░        ░       ░  ░
+░                                    ░             
+EOF
+    echo "${RESET}"
+    sleep 0.5
+}
+
+# Debug function
 debug() {
-    if [ "$DEBUG" = "true" ]; then
-        echo -e "\033[0;35m[DEBUG]\033[0m $1" >&2
+    if [ "$DEBUG" = true ]; then
+        echo -e "\033[0;35m[DEBUG]\033[0m $1"
     fi
 }
 
+# Print colorized status messages
 info() { echo -e "\033[0;34m[INFO]\033[0m $1"; }
 success() { echo -e "\033[0;32m[SUCCESS]\033[0m $1"; }
 error() { echo -e "\033[0;31m[ERROR]\033[0m $1" >&2; }
 
-# Check for required dependencies - define before main execution
+# Check for required dependencies
 check_dependencies() {
     debug "Checking dependencies..."
     local missing_deps=()
@@ -98,10 +118,11 @@ setup_credentials() {
 # Install files from either local or remote source
 install_files() {
     if [ "$USE_LOCAL" = true ]; then
+        debug "Installing from local repository"
         info "Installing from local files..."
         
         for file in "${SCRIPT_FILES[@]}"; do
-            info "Copying $file"
+            debug "Copying $file"
             local dir=$(dirname "$INSTALL_DIR/$file")
             mkdir -p "$dir"
             if [ -f "./$file" ]; then
@@ -115,16 +136,17 @@ install_files() {
         done
         
         if [ ! -f "$INSTALL_DIR/config.yml" ]; then
-            info "Copying config file"
+            debug "Copying config file"
             cp "./$CONFIG_FILE" "$INSTALL_DIR/config.yml"
             chmod 644 "$INSTALL_DIR/config.yml"
             success "Copied config.yml"
         fi
     else
+        debug "Installing from remote repository"
         info "Downloading from repository..."
         
         for file in "${SCRIPT_FILES[@]}"; do
-            info "Downloading $file"
+            debug "Downloading $file"
             local dir=$(dirname "$INSTALL_DIR/$file")
             local url="$REPO_URL/$file"
             mkdir -p "$dir"
@@ -143,7 +165,7 @@ install_files() {
         done
         
         if [ ! -f "$INSTALL_DIR/config.yml" ]; then
-            info "Downloading config file"
+            debug "Downloading config file"
             local config_url="$REPO_URL/$CONFIG_FILE"
             if curl --output /dev/null --silent --head --fail "$config_url"; then
                 if ! curl -sSL "$config_url" -o "$INSTALL_DIR/config.yml"; then
@@ -198,6 +220,7 @@ verify_installation() {
     done
     
     if [ $missing_files -eq 0 ]; then
+        show_terminal_art
         success "Claude CLI installed successfully!"
         echo
         if ! grep -q "^ANTHROPIC_API_KEY=your_api_key_here$" "$INSTALL_DIR/credentials"; then
@@ -220,23 +243,39 @@ verify_installation() {
     fi
 }
 
-# Check if running from curl pipe or local repo - must be after function definitions
-if [ -t 0 ] && [ -f "./bin/claude-cli" ]; then
-    USE_LOCAL=true
-    debug "Running from local repository"
-else
-    USE_LOCAL=false
-    debug "Running from remote installation"
-fi
+# Main installation flow
+main() {
+    debug "Starting installation..."
+    debug "Use local files: $USE_LOCAL"
+    
+    echo "Installing Claude CLI..."
+    [ "$USE_LOCAL" = true ] && echo "Installing from local repository"
+    [ "$USE_LOCAL" = false ] && echo "Installing from remote repository"
+    
+    check_dependencies
+    setup_directory
+    setup_credentials
+    install_files
+    configure_shell
+    verify_installation
+}
 
-# Main installation flow - at the very end after all functions are defined
-echo "Installing Claude CLI..."
-[ "$USE_LOCAL" = true ] && echo "Installing from local repository"
-[ "$USE_LOCAL" = false ] && echo "Installing from remote repository"
+main "$@"
+# Main installation flow
+main() {
+    debug "Starting installation..."
+    debug "Use local files: $USE_LOCAL"
+    
+    echo "Installing Claude CLI..."
+    [ "$USE_LOCAL" = true ] && echo "Installing from local repository"
+    [ "$USE_LOCAL" = false ] && echo "Installing from remote repository"
+    
+    check_dependencies
+    setup_directory
+    setup_credentials
+    install_files
+    configure_shell
+    verify_installation
+}
 
-check_dependencies
-setup_directory
-setup_credentials
-install_files
-configure_shell
-verify_installation
+main "$@"
