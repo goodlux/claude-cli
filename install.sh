@@ -7,21 +7,13 @@ DEBUG=false
 
 # Configuration
 INSTALL_DIR="$HOME/.claude-cli"
-REPO_URL="https://raw.githubusercontent.com/goodlux/claude-cli/main"
 SCRIPT_FILES=(
-    "bin/claude-cli"
-    "bin/lib/context.sh"
-    "bin/lib/settings.sh"
-    "bin/lib/shell.sh"  # Added missing shell.sh
+    "config/bin/claude-cli"
+    "config/bin/lib/context.sh"
+    "config/bin/lib/settings.sh"
+    "config/bin/lib/shell.sh"
 )
 CONFIG_FILE="config/config.yml.example"
-
-# Determine if running from curl pipe or local repo
-if [ -t 1 ] && [ -f "./bin/claude-cli" ]; then
-    USE_LOCAL=true
-else
-    USE_LOCAL=false
-fi
 
 # Debug function
 debug() {
@@ -92,97 +84,54 @@ setup_credentials() {
     fi
 }
 
-# Install files from either local or remote source
+# Install files from local source
 install_files() {
-    if [ "$USE_LOCAL" = true ]; then
-        debug "Installing from local repository"
-        info "Installing from local files..."
+    info "Installing files..."
+    
+    for file in "${SCRIPT_FILES[@]}"; do
+        debug "Processing $file"
+        # Get the destination path by removing 'config/' prefix
+        local dest_file=${file#config/}
+        local dest_dir=$(dirname "$INSTALL_DIR/$dest_file")
         
-        for file in "${SCRIPT_FILES[@]}"; do
-            debug "Copying $file"
-            local dir=$(dirname "$INSTALL_DIR/$file")
-            mkdir -p "$dir"
-            if [ -f "./$file" ]; then
-                cp "./$file" "$INSTALL_DIR/$file"
-                chmod 755 "$INSTALL_DIR/$file"
-                success "Copied $file"
-            else
-                error "Missing local file: ./$file"
-                exit 1
-            fi
-        done
+        debug "Creating directory: $dest_dir"
+        mkdir -p "$dest_dir"
         
-        if [ ! -f "$INSTALL_DIR/config.yml" ]; then
-            debug "Copying config file"
-            cp "./$CONFIG_FILE" "$INSTALL_DIR/config.yml"
-            chmod 644 "$INSTALL_DIR/config.yml"
-            success "Copied config.yml"
+        if [ -f "$file" ]; then
+            debug "Copying $file to $INSTALL_DIR/$dest_file"
+            cp "$file" "$INSTALL_DIR/$dest_file"
+            chmod 755 "$INSTALL_DIR/$dest_file"
+            success "Installed $dest_file"
+        else
+            error "Missing file: $file"
+            exit 1
         fi
-    else
-        debug "Installing from remote repository"
-        info "Downloading from repository..."
-        
-        for file in "${SCRIPT_FILES[@]}"; do
-            debug "Downloading $file"
-            local dir=$(dirname "$INSTALL_DIR/$file")
-            local url="$REPO_URL/$file"
-            mkdir -p "$dir"
-            
-            # First check if file exists at URL
-            if curl --output /dev/null --silent --head --fail "$url"; then
-                if ! curl -sSL "$url" -o "$INSTALL_DIR/$file"; then
-                    error "Failed to download $file"
-                    exit 1
-                fi
-                chmod 755 "$INSTALL_DIR/$file"
-                success "Downloaded $file"
-            else
-                error "File not found at URL: $url"
-                exit 1
-            fi
-        done
-        
-        if [ ! -f "$INSTALL_DIR/config.yml" ]; then
-            debug "Downloading config file"
-            local config_url="$REPO_URL/$CONFIG_FILE"
-            if curl --output /dev/null --silent --head --fail "$config_url"; then
-                if ! curl -sSL "$config_url" -o "$INSTALL_DIR/config.yml"; then
-                    error "Failed to download config file"
-                    exit 1
-                fi
-                chmod 644 "$INSTALL_DIR/config.yml"
-                success "Downloaded config.yml"
-            else
-                error "Config file not found at URL: $config_url"
-                exit 1
-            fi
-        fi
+    done
+    
+    if [ ! -f "$INSTALL_DIR/config.yml" ] && [ -f "$CONFIG_FILE" ]; then
+        debug "Installing config file"
+        cp "$CONFIG_FILE" "$INSTALL_DIR/config.yml"
+        chmod 644 "$INSTALL_DIR/config.yml"
+        success "Installed config.yml"
     fi
 }
 
 # Configure shell
 configure_shell() {
     debug "Configuring shell..."
-    local shell_config
     
-    case "$SHELL" in
-        */zsh) shell_config="$HOME/.zshrc" ;;
-        */bash) shell_config="$HOME/.bashrc" ;;
-        *) 
-            error "Unsupported shell: $SHELL"
-            echo "Please manually add: source $INSTALL_DIR/bin/claude-cli"
-            return 1
-            ;;
+    # Source shell.sh for its functions
+    source "$INSTALL_DIR/bin/lib/shell.sh"
+    
+    # Use the shell detection function from shell.sh
+    local result=$(setup_shell_config "$INSTALL_DIR")
+    local status=$?
+    
+    case $status in
+        0) success "Shell configuration added" ;;
+        1) error "Shell configuration failed" ;;
+        2) info "Shell already configured" ;;
     esac
-    
-    debug "Using shell config: $shell_config"
-    
-    if ! grep -q "source.*$INSTALL_DIR/bin/claude-cli" "$shell_config"; then
-        echo "source $INSTALL_DIR/bin/claude-cli" >> "$shell_config"
-        success "Added Claude CLI to $shell_config"
-    else
-        info "Claude CLI already configured in $shell_config"
-    fi
 }
 
 # Verify installation
@@ -191,13 +140,16 @@ verify_installation() {
     
     local missing_files=0
     for file in "${SCRIPT_FILES[@]}"; do
-        if [ ! -f "$INSTALL_DIR/$file" ]; then
-            error "Missing file: $INSTALL_DIR/$file"
+        local dest_file=${file#config/}
+        if [ ! -f "$INSTALL_DIR/$dest_file" ]; then
+            error "Missing file: $INSTALL_DIR/$dest_file"
             missing_files=1
         fi
     done
     
     if [ $missing_files -eq 0 ]; then
+        show_terminal_art
+        show_branding
         success "Claude CLI installed successfully!"
         echo
         if ! grep -q "^ANTHROPIC_API_KEY=your_api_key_here$" "$INSTALL_DIR/credentials"; then
@@ -212,23 +164,113 @@ verify_installation() {
             echo "2. Start a new shell or run:"
             echo "   source $INSTALL_DIR/bin/claude-cli"
         fi
-        echo
-        echo "For more information, visit: https://github.com/goodlux/claude-cli"
     else
         error "Installation verification failed"
         exit 1
     fi
 }
 
+# ASCII art display function
+show_terminal_art() {
+    local BLUE=$(tput setaf 4)
+    local RESET=$(tput sgr0)
+    
+    echo
+    echo "${BLUE}"
+    cat << "EOF"
+     ▄████▄   ██▓    ▄▄▄       █    ██ ▓█████▄ ▓█████ 
+    ▒██▀ ▀█  ▓██▒   ▒████▄     ██  ▓██▒▒██▀ ██▌▓█   ▀ 
+    ▒▓█    ▄ ▒██░   ▒██  ▀█▄  ▓██  ▒██░░██   █▌▒███   
+    ▒▓▓▄ ▄██▒▒██░   ░██▄▄▄▄██ ▓▓█  ░██░░▓█▄   ▌▒▓█  ▄ 
+    ▒ ▓███▀ ░░██████▒▓█   ▓██▒▒▒█████▓ ░▒████▓ ░▒████▒
+    ░ ░▒ ▒  ░░ ▒░▓  ░▒▒   ▓▒█░░▒▓▒ ▒ ▒  ▒▒▓  ▒ ░░ ▒░ ░
+      ░  ▒   ░ ░ ▒  ░ ▒   ▒▒ ░░░▒░ ░ ░  ░ ▒  ▒  ░ ░  ░
+    ░          ░ ░    ░   ▒    ░░░ ░ ░  ░ ░  ░    ░   
+    ░ ░          ░  ░     ░  ░   ░        ░       ░  ░
+    ░                                    ░             
+EOF
+    echo "${RESET}"
+    sleep 0.5
+}
+
+# Terminal animation utilities
+show_branding() {
+    # Use tput for colors and cursor control
+    local RED=$(tput setaf 1)
+    local GREEN=$(tput setaf 2)
+    local YELLOW=$(tput setaf 3)
+    local BLUE=$(tput setaf 4)
+    local MAGENTA=$(tput setaf 5)
+    local CYAN=$(tput setaf 6)
+    local RESET=$(tput sgr0)
+    
+    # Hide cursor
+    tput civis
+    
+    # Cleanup on exit or interrupt
+    trap 'tput cnorm; echo' EXIT INT
+    
+    # Simple spinner
+    local SPINNER=('-' '\' '|' '/')
+    
+    echo
+    
+    # Typing effect for "powered by"
+    local TEXT="powered by "
+    for ((i=0; i<${#TEXT}; i++)); do
+        echo -n "${TEXT:$i:1}"
+        sleep 0.03
+    done
+    
+    echo -n "CLAUDE"
+    sleep 0.5
+    
+    # Delete animation
+    for ((i=6; i>=0; i--)); do
+        tput cr  # Return to start of line
+        tput el  # Clear to end of line
+        echo -n "$TEXT"
+        printf "%-${i}s" "CLAUDE"
+        sleep 0.1
+    done
+    
+    # Colorful typing animation with spinner
+    for ((i=0; i<6; i++)); do
+        for ((s=0; s<4; s++)); do
+            tput cr
+            tput el
+            echo -n "$TEXT"
+            
+            case $i in
+                0) echo -n "${RED}C${RESET}" ;;
+                1) echo -n "${RED}C${GREEN}L${RESET}" ;;
+                2) echo -n "${RED}C${GREEN}L${BLUE}A${RESET}" ;;
+                3) echo -n "${RED}C${GREEN}L${BLUE}A${MAGENTA}U${RESET}" ;;
+                4) echo -n "${RED}C${GREEN}L${BLUE}A${MAGENTA}U${CYAN}D${RESET}" ;;
+                5) echo -n "${RED}C${GREEN}L${BLUE}A${MAGENTA}U${CYAN}D${YELLOW}E${RESET}" ;;
+            esac
+            
+            echo -n " ${SPINNER[s]}"
+            sleep 0.1
+        done
+    done
+    
+    # Final display with rainbow colors
+    tput cr
+    tput el
+    echo -n "$TEXT${RED}C${GREEN}L${BLUE}A${MAGENTA}U${CYAN}D${YELLOW}E${RESET}"
+    echo
+    echo
+    
+    # Show cursor
+    tput cnorm
+}
+
 # Main installation flow
 main() {
     debug "Starting installation..."
-    debug "Use local files: $USE_LOCAL"
     
     echo "Installing Claude CLI..."
-    [ "$USE_LOCAL" = true ] && echo "Installing from local repository"
-    [ "$USE_LOCAL" = false ] && echo "Installing from remote repository"
-    
     check_dependencies
     setup_directory
     setup_credentials
