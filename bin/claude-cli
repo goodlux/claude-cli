@@ -1,0 +1,172 @@
+#!/bin/bash
+# claude-cli: Natural language interface for bash using Claude API
+
+# Directory setup
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+REPO_DIR="$( dirname "$SCRIPT_DIR" )"
+USER_CONFIG_DIR="$HOME/.claude-cli"
+CREDENTIALS_FILE="$USER_CONFIG_DIR/credentials"
+CONFIG_FILE="$USER_CONFIG_DIR/config.yml"
+HISTORY_FILE="$USER_CONFIG_DIR/history.txt"
+
+# Default configuration
+CLAUDE_CLI_MODEL="claude-3-sonnet-20240229"
+CLAUDE_CLI_CONTEXT_LINES="${CLAUDE_CLI_CONTEXT_LINES:-1000}"
+
+# Detect OS and set appropriate commands
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    OS_TYPE="macos"
+    DATE_CMD_RECENT="date -v-7d"
+    OS_VERSION_CMD="sw_vers"
+else
+    OS_TYPE="linux"
+    DATE_CMD_RECENT="date -d '-7 days'"
+    OS_VERSION_CMD="cat /etc/os-release"
+fi
+
+# Source credentials if they exist
+if [ -f "$CREDENTIALS_FILE" ]; then
+    source "$CREDENTIALS_FILE"
+else
+    echo "Warning: No credentials file found at $CREDENTIALS_FILE"
+    echo "Please create it with your Anthropic API key"
+    return 1
+fi
+
+# Helper function to capture terminal context
+get_terminal_context() {
+    local context=""
+
+    # Current directory info
+    context+="Current directory: $(pwd)\n"
+    context+="Files:\n$(ls -la)\n\n"
+
+    # Recent history
+    context+="Recent commands:\n"
+    context+="$(history | tail -n $CLAUDE_CLI_CONTEXT_LINES)\n\n"
+
+    echo -e "$context"
+}
+
+# Helper function to call Claude API
+call_claude_api() {
+    local prompt="$1"
+    local context="$2"
+
+    local request_json='{
+        "model": "'"$CLAUDE_CLI_MODEL"'",
+        "max_tokens": 1024,
+        "system": "You are a CLI assistant for '"$OS_TYPE"'. Important: You are running on '"$OS_TYPE"', so use appropriate command syntax. For date calculations on macOS, use \"-v\" not \"-d\". For example, \"7 days ago\" on macOS is \"date -v-7d\". You should check for existence of tools before suggesting installations. Prefer commands that show information about existing tools (which, command -v, --version) rather than suggesting package installations. Always respond in exactly this format: suggested_command: <command>\\nexplanation: <brief explanation>",
+        "messages": [{
+            "role": "user",
+            "content": "Convert to bash command: '"$prompt"'"
+        }]
+    }'
+
+    # Make API call
+    local response
+    response=$(curl -s "https://api.anthropic.com/v1/messages" \
+        -H "x-api-key: $ANTHROPIC_API_KEY" \
+        -H "anthropic-version: 2023-06-01" \
+        -H "content-type: application/json" \
+        -d "$request_json")
+
+    # Check for error response
+    if echo "$response" | jq -e '.error' >/dev/null 2>&1; then
+        local error_message=$(echo "$response" | jq -r '.error.message')
+        echo "API Error: $error_message"
+        echo "suggested_command: ls"
+        echo "explanation: API error occurred: $error_message"
+        return
+    fi
+
+    # Extract the content from successful response
+    local command=$(echo "$response" | jq -r '.content[0].text' 2>/dev/null)
+
+    # Check if we got a valid command
+    if [ -n "$command" ] && [ "$command" != "null" ]; then
+        echo "$command"
+    else
+        echo "suggested_command: ls"
+        echo "explanation: Could not parse API response, using fallback command"
+    fi
+}
+
+# Helper function to confirm command execution
+confirm_execution() {
+    local cmd="$1"
+    local explanation="$2"
+    
+    echo -e "\nSuggested command:"
+    echo -e "\033[1m$cmd\033[0m"  # Bold command
+    echo -e "\nExplanation:"
+    echo -e "$explanation\n"  # Extra newlines for readability
+    
+    read -p "Execute this command? [y/n/e(edit)] " choice
+    
+    case "$choice" in
+        y|Y) return 0 ;;
+        n|N) return 1 ;;
+        e|E)
+            read -p "Edit command: " -e -i "$cmd" edited_cmd
+            if [ -n "$edited_cmd" ]; then
+                confirm_execution "$edited_cmd" "$explanation"
+                return $?
+            fi
+            return 1
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+# Main claude-cli function
+claude_cli() {
+    # Show help if no arguments
+    if [ $# -eq 0 ]; then
+        echo "Usage: claude_cli 'natural language command description'"
+        echo "Example: claude_cli 'find all python files modified in the last week'"
+        return 1
+    fi
+
+    # Capture the natural language request
+    local request="$*"
+    
+    # Get terminal context
+    local context=$(get_terminal_context)
+    
+    # Call Claude API
+    local response=$(call_claude_api "$request" "$context")
+    
+    # Parse response
+    local suggested_cmd=$(echo "$response" | grep '^suggested_command: ' | cut -d' ' -f2-)
+    local explanation=$(echo "$response" | grep '^explanation: ' | cut -d' ' -f2-)
+    
+    # Confirm and execute
+    if [ -n "$suggested_cmd" ]; then
+        if confirm_execution "$suggested_cmd" "$explanation"; then
+            # Log to history
+            echo "$(date '+%Y-%m-%d %H:%M:%S')|$request|$suggested_cmd" >> "$HISTORY_FILE"
+            
+            # Execute the command
+            eval "$suggested_cmd"
+        fi
+    else
+        echo "Sorry, I couldn't generate a command for that request."
+    fi
+}
+
+# Alias for easier access
+alias ccli='claude_cli'
+
+# Add command completion (basic version)
+_claude_cli_complete() {
+    local cur=${COMP_WORDS[COMP_CWORD]}
+    local prev_cmds=$(tail -n 10 "$HISTORY_FILE" 2>/dev/null | cut -d'|' -f2 | sort -u)
+    
+    COMPREPLY=($(compgen -W "$prev_cmds" -- "$cur"))
+}
+
+complete -F _claude_cli_complete claude_cli
+complete -F _claude_cli_complete ccli
+
+echo "Claude CLI loaded. Use 'claude_cli' or 'ccli' to start."
