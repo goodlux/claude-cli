@@ -1,89 +1,67 @@
 #!/bin/bash
 set -e
 
-# Debug mode
-DEBUG=false
-[ "$1" = "--debug" ] && DEBUG=true
-
 # Configuration
 INSTALL_DIR="$HOME/.claude-cli"
-SCRIPT_FILES=(
-    "config/bin/claude-cli"
-    "config/bin/lib/context.sh"
-    "config/bin/lib/settings.sh"
-    "config/bin/lib/shell.sh"
-)
+REPO_URL="https://raw.githubusercontent.com/goodlux/claude-cli/main"
+SCRIPT_FILES=("bin/claude-cli" "bin/lib/context.sh" "bin/lib/settings.sh" "bin/lib/shell.sh")
 CONFIG_FILE="config/config.yml.example"
 
-# Debug function
-debug() {
-    if [ "$DEBUG" = true ]; then
-        echo -e "\033[0;35m[DEBUG]\033[0m $1"
-    fi
-}
+# Determine if running from curl pipe or local repo
+if [ -t 0 ] && [ -f "./bin/claude-cli" ]; then
+    USE_LOCAL=true
+else
+    USE_LOCAL=false
+fi
 
 # Print colorized status messages
 info() { echo -e "\033[0;34m[INFO]\033[0m $1"; }
 success() { echo -e "\033[0;32m[SUCCESS]\033[0m $1"; }
 error() { echo -e "\033[0;31m[ERROR]\033[0m $1" >&2; }
 
-# Check for required dependencies
-check_dependencies() {
-    debug "Checking dependencies..."
-    local missing_deps=()
-    
-    for cmd in curl jq yq; do
-        if ! command -v "$cmd" >/dev/null 2>&1; then
-            missing_deps+=("$cmd")
-        fi
-    done
-    
-    if [ ${#missing_deps[@]} -ne 0 ]; then
-        error "Missing required dependencies: ${missing_deps[*]}"
-        echo "Please install them first:"
-        echo "  - For Ubuntu/Debian: sudo apt-get install ${missing_deps[*]}"
-        echo "  - For macOS: brew install ${missing_deps[*]}"
-        exit 1
-    fi
-}
-
-# Create installation directory structure
-setup_directory() {
-    debug "Creating directory structure at $INSTALL_DIR"
-    mkdir -p "$INSTALL_DIR/bin/lib" "$INSTALL_DIR/cache"
-}
-
-# Handle API key input
+# Handle API key input with proper terminal handling
 setup_credentials() {
-    debug "Setting up credentials..."
-    
     if [ -f "$INSTALL_DIR/credentials" ]; then
-        debug "Existing credentials file found"
+        info "Existing credentials file found"
         return 0
     fi
     
-    echo "Please enter your Anthropic API key"
-    echo "You can find your API key at: https://console.anthropic.com/dashboard"
-    echo "If you don't have one yet, press Enter to skip and add it later"
-    echo -n "API key: "
-    read -r api_key
+    # Save current terminal settings
+    if [ -t 0 ]; then
+        OLD_TTY=$(stty -g)
+    fi
     
-    if [ -n "$api_key" ]; then
-        debug "Writing API key to credentials file"
-        echo "# Anthropic API credentials" > "$INSTALL_DIR/credentials"
-        echo "ANTHROPIC_API_KEY=$api_key" >> "$INSTALL_DIR/credentials"
-        chmod 600 "$INSTALL_DIR/credentials"
-        success "API key configured"
+    # Create credentials file first
+    echo "# Anthropic API credentials" > "$INSTALL_DIR/credentials"
+    echo "# Get your API key from: https://console.anthropic.com/dashboard" >> "$INSTALL_DIR/credentials"
+    chmod 600 "$INSTALL_DIR/credentials"
+    
+    # Only prompt for API key if we have a terminal
+    if [ -t 0 ]; then
+        echo "Please enter your Anthropic API key"
+        echo "You can find your API key at: https://console.anthropic.com/dashboard"
+        echo "If you don't have one yet, press Enter to skip and add it later"
+        echo -n "API key: "
+        
+        # Read API key with proper terminal handling
+        read -r api_key </dev/tty
+        
+        # Restore terminal settings
+        stty "$OLD_TTY"
+        
+        if [ -n "$api_key" ]; then
+            echo "ANTHROPIC_API_KEY=$api_key" >> "$INSTALL_DIR/credentials"
+            success "API key configured"
+        else
+            echo "ANTHROPIC_API_KEY=your_api_key_here" >> "$INSTALL_DIR/credentials"
+            info "No API key provided. You can add it later by editing $INSTALL_DIR/credentials"
+        fi
     else
-        debug "Creating empty credentials file"
-        echo "# Anthropic API credentials" > "$INSTALL_DIR/credentials"
-        echo "# Get your API key from: https://console.anthropic.com/dashboard" >> "$INSTALL_DIR/credentials"
+        # If no terminal, create with placeholder
         echo "ANTHROPIC_API_KEY=your_api_key_here" >> "$INSTALL_DIR/credentials"
-        chmod 600 "$INSTALL_DIR/credentials"
-        info "No API key provided. You can add it later by editing $INSTALL_DIR/credentials"
+        info "No terminal detected. Please edit $INSTALL_DIR/credentials to add your API key"
     fi
 }
-
 # Install files from local source
 install_files() {
     info "Installing files..."
