@@ -97,7 +97,7 @@ confirm_execution() {
     local cmd="$1"
     local explanation="$2"
     
-    echo -e "\nSuggested command (this is a test delete me later):"
+    echo -e "\nSuggested command:"
     echo -e "\033[1m$cmd\033[0m"  # Bold command
     echo -e "\nExplanation:"
     echo -e "$explanation\n"  # Extra newlines for readability

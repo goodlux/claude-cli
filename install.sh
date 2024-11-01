@@ -1,14 +1,19 @@
 #!/bin/bash
 set -e
 
-# Debug mode check
+# Debug mode
 DEBUG=false
 [ "$1" = "--debug" ] && DEBUG=true
 
 # Configuration
 INSTALL_DIR="$HOME/.claude-cli"
 REPO_URL="https://raw.githubusercontent.com/goodlux/claude-cli/main"
-SCRIPT_FILES=("bin/claude-cli" "bin/lib/context.sh" "bin/lib/settings.sh")
+SCRIPT_FILES=(
+    "bin/claude-cli"
+    "bin/lib/context.sh"
+    "bin/lib/settings.sh"
+    "bin/lib/shell.sh"  # Added missing shell.sh
+)
 CONFIG_FILE="config/config.yml.example"
 
 # Determine if running from curl pipe or local repo
@@ -87,38 +92,6 @@ setup_credentials() {
     fi
 }
 
-
-install_dependencies() {
-    debug "Checking and installing dependencies..."
-    local missing_deps=()
-    
-    for cmd in curl jq yq; do
-        if ! command -v "$cmd" >/dev/null 2>&1; then
-            missing_deps+=("$cmd")
-        fi
-    done
-    
-    if [ ${#missing_deps[@]} -ne 0 ]; then
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            if command -v brew >/dev/null 2>&1; then
-                info "Installing missing dependencies with Homebrew..."
-                brew install "${missing_deps[@]}"
-            else
-                error "Homebrew not found. Please install Homebrew first:"
-                echo "  /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
-                exit 1
-            fi
-        elif command -v apt-get >/dev/null 2>&1; then
-            info "Installing missing dependencies with apt-get..."
-            sudo apt-get update && sudo apt-get install -y "${missing_deps[@]}"
-        else
-            error "Package manager not found. Please install dependencies manually:"
-            echo "  ${missing_deps[*]}"
-            exit 1
-        fi
-    fi
-}
-
 # Install files from either local or remote source
 install_files() {
     if [ "$USE_LOCAL" = true ]; then
@@ -129,9 +102,14 @@ install_files() {
             debug "Copying $file"
             local dir=$(dirname "$INSTALL_DIR/$file")
             mkdir -p "$dir"
-            cp "./$file" "$INSTALL_DIR/$file"
-            chmod 755 "$INSTALL_DIR/$file"
-            success "Copied $file"
+            if [ -f "./$file" ]; then
+                cp "./$file" "$INSTALL_DIR/$file"
+                chmod 755 "$INSTALL_DIR/$file"
+                success "Copied $file"
+            else
+                error "Missing local file: ./$file"
+                exit 1
+            fi
         done
         
         if [ ! -f "$INSTALL_DIR/config.yml" ]; then
@@ -150,22 +128,34 @@ install_files() {
             local url="$REPO_URL/$file"
             mkdir -p "$dir"
             
-            if ! curl -sSL "$url" -o "$INSTALL_DIR/$file"; then
-                error "Failed to download $file"
+            # First check if file exists at URL
+            if curl --output /dev/null --silent --head --fail "$url"; then
+                if ! curl -sSL "$url" -o "$INSTALL_DIR/$file"; then
+                    error "Failed to download $file"
+                    exit 1
+                fi
+                chmod 755 "$INSTALL_DIR/$file"
+                success "Downloaded $file"
+            else
+                error "File not found at URL: $url"
                 exit 1
             fi
-            chmod 755 "$INSTALL_DIR/$file"
-            success "Downloaded $file"
         done
         
         if [ ! -f "$INSTALL_DIR/config.yml" ]; then
             debug "Downloading config file"
-            if ! curl -sSL "$REPO_URL/$CONFIG_FILE" -o "$INSTALL_DIR/config.yml"; then
-                error "Failed to download config file"
+            local config_url="$REPO_URL/$CONFIG_FILE"
+            if curl --output /dev/null --silent --head --fail "$config_url"; then
+                if ! curl -sSL "$config_url" -o "$INSTALL_DIR/config.yml"; then
+                    error "Failed to download config file"
+                    exit 1
+                fi
+                chmod 644 "$INSTALL_DIR/config.yml"
+                success "Downloaded config.yml"
+            else
+                error "Config file not found at URL: $config_url"
                 exit 1
             fi
-            chmod 644 "$INSTALL_DIR/config.yml"
-            success "Downloaded config.yml"
         fi
     fi
 }
@@ -173,23 +163,26 @@ install_files() {
 # Configure shell
 configure_shell() {
     debug "Configuring shell..."
+    local shell_config
     
-    # Source our shell utilities
-    source "$INSTALL_DIR/bin/lib/shell.sh"
-    
-    # Check OS requirements
-    check_os_requirements
-    if [ $? -eq 1 ]; then
-        info "Some GNU utilities are missing but installation will continue"
-    fi
-    
-    # Setup shell configuration
-    setup_shell_config "$INSTALL_DIR"
-    case $? in
-        0) success "Added Claude CLI to shell configuration" ;;
-        1) error "Failed to configure shell" ; return 1 ;;
-        2) info "Claude CLI already configured in shell" ;;
+    case "$SHELL" in
+        */zsh) shell_config="$HOME/.zshrc" ;;
+        */bash) shell_config="$HOME/.bashrc" ;;
+        *) 
+            error "Unsupported shell: $SHELL"
+            echo "Please manually add: source $INSTALL_DIR/bin/claude-cli"
+            return 1
+            ;;
     esac
+    
+    debug "Using shell config: $shell_config"
+    
+    if ! grep -q "source.*$INSTALL_DIR/bin/claude-cli" "$shell_config"; then
+        echo "source $INSTALL_DIR/bin/claude-cli" >> "$shell_config"
+        success "Added Claude CLI to $shell_config"
+    else
+        info "Claude CLI already configured in $shell_config"
+    fi
 }
 
 # Verify installation

@@ -92,7 +92,6 @@ claude_settings set model claude-3-sonnet-20240229
 # Get help
 claude_settings help
 ```
-
 ## Examples
 
 Show system resource usage and most active processes:
