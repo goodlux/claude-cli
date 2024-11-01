@@ -1,9 +1,12 @@
 #!/bin/bash
 set -e
 
-# Debug mode
-DEBUG=false
-[ "$1" = "--debug" ] && DEBUG=true
+# Debug mode - needs to be set before any function definitions
+if [ -n "$DEBUG" ] || [ "$1" = "--debug" ]; then
+    DEBUG=true
+else
+    DEBUG=false
+fi
 
 # Configuration
 INSTALL_DIR="$HOME/.claude-cli"
@@ -11,103 +14,33 @@ REPO_URL="https://raw.githubusercontent.com/goodlux/claude-cli/main"
 SCRIPT_FILES=("bin/claude-cli" "bin/lib/context.sh" "bin/lib/settings.sh" "bin/lib/shell.sh")
 CONFIG_FILE="config/config.yml.example"
 
-# Determine if running from curl pipe or local repo
-if [ -t 0 ] && [ -f "./bin/claude-cli" ]; then
-    USE_LOCAL=true
-else
-    USE_LOCAL=false
-fi
-
-# Debug function
+# Basic utility functions - these need to be defined first
 debug() {
-    if [ "$DEBUG" = true ]; then
-        echo -e "\033[0;35m[DEBUG]\033[0m $1"
+    if [ "$DEBUG" = "true" ]; then
+        echo -e "\033[0;35m[DEBUG]\033[0m $1" >&2
     fi
 }
 
-# Print colorized status messages
 info() { echo -e "\033[0;34m[INFO]\033[0m $1"; }
 success() { echo -e "\033[0;32m[SUCCESS]\033[0m $1"; }
 error() { echo -e "\033[0;31m[ERROR]\033[0m $1" >&2; }
 
-# Check for required dependencies
-check_dependencies() {
-    debug "Checking dependencies..."
-    local missing_deps=()
-    
-    for cmd in curl jq yq; do
-        if ! command -v "$cmd" >/dev/null 2>&1; then
-            missing_deps+=("$cmd")
-        fi
-    done
-    
-    if [ ${#missing_deps[@]} -ne 0 ]; then
-        error "Missing required dependencies: ${missing_deps[*]}"
-        echo "Please install them first:"
-        echo "  - For Ubuntu/Debian: sudo apt-get install ${missing_deps[*]}"
-        echo "  - For macOS: brew install ${missing_deps[*]}"
-        exit 1
-    fi
-}
-
-# Create installation directory structure
-setup_directory() {
-    debug "Creating directory structure at $INSTALL_DIR"
-    mkdir -p "$INSTALL_DIR/bin/lib" "$INSTALL_DIR/cache"
-}
-
-# Handle API key input with proper terminal handling
-setup_credentials() {
-    if [ -f "$INSTALL_DIR/credentials" ]; then
-        info "Existing credentials file found"
-        return 0
-    fi
-    
-    # Save current terminal settings
-    if [ -t 0 ]; then
-        OLD_TTY=$(stty -g)
-    fi
-    
-    # Create credentials file first
-    echo "# Anthropic API credentials" > "$INSTALL_DIR/credentials"
-    echo "# Get your API key from: https://console.anthropic.com/dashboard" >> "$INSTALL_DIR/credentials"
-    chmod 600 "$INSTALL_DIR/credentials"
-    
-    # Only prompt for API key if we have a terminal
-    if [ -t 0 ]; then
-        echo "Please enter your Anthropic API key"
-        echo "You can find your API key at: https://console.anthropic.com/dashboard"
-        echo "If you don't have one yet, press Enter to skip and add it later"
-        echo -n "API key: "
-        
-        # Read API key with proper terminal handling
-        read -r api_key </dev/tty
-        
-        # Restore terminal settings
-        stty "$OLD_TTY"
-        
-        if [ -n "$api_key" ]; then
-            echo "ANTHROPIC_API_KEY=$api_key" >> "$INSTALL_DIR/credentials"
-            success "API key configured"
-        else
-            echo "ANTHROPIC_API_KEY=your_api_key_here" >> "$INSTALL_DIR/credentials"
-            info "No API key provided. You can add it later by editing $INSTALL_DIR/credentials"
-        fi
-    else
-        # If no terminal, create with placeholder
-        echo "ANTHROPIC_API_KEY=your_api_key_here" >> "$INSTALL_DIR/credentials"
-        info "No terminal detected. Please edit $INSTALL_DIR/credentials to add your API key"
-    fi
-}
+# Now check if running from curl pipe or local repo
+if [ -t 0 ] && [ -f "./bin/claude-cli" ]; then
+    USE_LOCAL=true
+    debug "Running from local repository"
+else
+    USE_LOCAL=false
+    debug "Running from remote installation"
+fi
 
 # Install files from either local or remote source
 install_files() {
     if [ "$USE_LOCAL" = true ]; then
-        debug "Installing from local repository"
         info "Installing from local files..."
         
         for file in "${SCRIPT_FILES[@]}"; do
-            debug "Copying $file"
+            info "Copying $file"
             local dir=$(dirname "$INSTALL_DIR/$file")
             mkdir -p "$dir"
             if [ -f "./$file" ]; then
@@ -121,17 +54,16 @@ install_files() {
         done
         
         if [ ! -f "$INSTALL_DIR/config.yml" ]; then
-            debug "Copying config file"
+            info "Copying config file"
             cp "./$CONFIG_FILE" "$INSTALL_DIR/config.yml"
             chmod 644 "$INSTALL_DIR/config.yml"
             success "Copied config.yml"
         fi
     else
-        debug "Installing from remote repository"
         info "Downloading from repository..."
         
         for file in "${SCRIPT_FILES[@]}"; do
-            debug "Downloading $file"
+            info "Downloading $file"
             local dir=$(dirname "$INSTALL_DIR/$file")
             local url="$REPO_URL/$file"
             mkdir -p "$dir"
@@ -150,7 +82,7 @@ install_files() {
         done
         
         if [ ! -f "$INSTALL_DIR/config.yml" ]; then
-            debug "Downloading config file"
+            info "Downloading config file"
             local config_url="$REPO_URL/$CONFIG_FILE"
             if curl --output /dev/null --silent --head --fail "$config_url"; then
                 if ! curl -sSL "$config_url" -o "$INSTALL_DIR/config.yml"; then
