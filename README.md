@@ -93,6 +93,33 @@ claude_settings set model claude-3-sonnet-20240229
 claude_settings help
 ```
 
+## Examples
+
+Show system resource usage and most active processes:
+```bash
+ccli "show me CPU and memory usage, sorting processes by resource consumption"
+```
+
+Find and clean up large files:
+```bash
+ccli "find the 10 largest files in my home directory and show their sizes in human readable format"
+```
+
+Analyze code in current directory:
+```bash
+ccli "count lines of code by file extension in this directory, excluding node_modules"
+```
+
+Monitor system activity:
+```bash
+ccli "show me real-time network connections and their states"
+```
+
+Search and analyze logs:
+```bash
+ccli "find all error messages in today's log files and show their frequency"
+```
+
 ## Features
 
 - Natural language → bash command conversion

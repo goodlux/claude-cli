@@ -87,6 +87,38 @@ setup_credentials() {
     fi
 }
 
+
+install_dependencies() {
+    debug "Checking and installing dependencies..."
+    local missing_deps=()
+    
+    for cmd in curl jq yq; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            missing_deps+=("$cmd")
+        fi
+    done
+    
+    if [ ${#missing_deps[@]} -ne 0 ]; then
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            if command -v brew >/dev/null 2>&1; then
+                info "Installing missing dependencies with Homebrew..."
+                brew install "${missing_deps[@]}"
+            else
+                error "Homebrew not found. Please install Homebrew first:"
+                echo "  /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+                exit 1
+            fi
+        elif command -v apt-get >/dev/null 2>&1; then
+            info "Installing missing dependencies with apt-get..."
+            sudo apt-get update && sudo apt-get install -y "${missing_deps[@]}"
+        else
+            error "Package manager not found. Please install dependencies manually:"
+            echo "  ${missing_deps[*]}"
+            exit 1
+        fi
+    fi
+}
+
 # Install files from either local or remote source
 install_files() {
     if [ "$USE_LOCAL" = true ]; then
