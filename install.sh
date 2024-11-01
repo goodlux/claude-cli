@@ -14,7 +14,7 @@ REPO_URL="https://raw.githubusercontent.com/goodlux/claude-cli/main"
 SCRIPT_FILES=("bin/claude-cli" "bin/lib/context.sh" "bin/lib/settings.sh" "bin/lib/shell.sh")
 CONFIG_FILE="config/config.yml.example"
 
-# Basic utility functions - these need to be defined first
+# Basic utility functions - must be defined first
 debug() {
     if [ "$DEBUG" = "true" ]; then
         echo -e "\033[0;35m[DEBUG]\033[0m $1" >&2
@@ -25,14 +25,75 @@ info() { echo -e "\033[0;34m[INFO]\033[0m $1"; }
 success() { echo -e "\033[0;32m[SUCCESS]\033[0m $1"; }
 error() { echo -e "\033[0;31m[ERROR]\033[0m $1" >&2; }
 
-# Now check if running from curl pipe or local repo
-if [ -t 0 ] && [ -f "./bin/claude-cli" ]; then
-    USE_LOCAL=true
-    debug "Running from local repository"
-else
-    USE_LOCAL=false
-    debug "Running from remote installation"
-fi
+# Check for required dependencies - define before main execution
+check_dependencies() {
+    debug "Checking dependencies..."
+    local missing_deps=()
+    
+    for cmd in curl jq yq; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            missing_deps+=("$cmd")
+        fi
+    done
+    
+    if [ ${#missing_deps[@]} -ne 0 ]; then
+        error "Missing required dependencies: ${missing_deps[*]}"
+        echo "Please install them first:"
+        echo "  - For Ubuntu/Debian: sudo apt-get install ${missing_deps[*]}"
+        echo "  - For macOS: brew install ${missing_deps[*]}"
+        exit 1
+    fi
+}
+
+# Create installation directory structure
+setup_directory() {
+    debug "Creating directory structure at $INSTALL_DIR"
+    mkdir -p "$INSTALL_DIR/bin/lib" "$INSTALL_DIR/cache"
+}
+
+# Handle API key input with proper terminal handling
+setup_credentials() {
+    if [ -f "$INSTALL_DIR/credentials" ]; then
+        info "Existing credentials file found"
+        return 0
+    fi
+    
+    # Save current terminal settings
+    if [ -t 0 ]; then
+        OLD_TTY=$(stty -g)
+    fi
+    
+    # Create credentials file first
+    echo "# Anthropic API credentials" > "$INSTALL_DIR/credentials"
+    echo "# Get your API key from: https://console.anthropic.com/dashboard" >> "$INSTALL_DIR/credentials"
+    chmod 600 "$INSTALL_DIR/credentials"
+    
+    # Only prompt for API key if we have a terminal
+    if [ -t 0 ]; then
+        echo "Please enter your Anthropic API key"
+        echo "You can find your API key at: https://console.anthropic.com/dashboard"
+        echo "If you don't have one yet, press Enter to skip and add it later"
+        echo -n "API key: "
+        
+        # Read API key with proper terminal handling
+        read -r api_key </dev/tty
+        
+        # Restore terminal settings
+        stty "$OLD_TTY"
+        
+        if [ -n "$api_key" ]; then
+            echo "ANTHROPIC_API_KEY=$api_key" >> "$INSTALL_DIR/credentials"
+            success "API key configured"
+        else
+            echo "ANTHROPIC_API_KEY=your_api_key_here" >> "$INSTALL_DIR/credentials"
+            info "No API key provided. You can add it later by editing $INSTALL_DIR/credentials"
+        fi
+    else
+        # If no terminal, create with placeholder
+        echo "ANTHROPIC_API_KEY=your_api_key_here" >> "$INSTALL_DIR/credentials"
+        info "No terminal detected. Please edit $INSTALL_DIR/credentials to add your API key"
+    fi
+}
 
 # Install files from either local or remote source
 install_files() {
@@ -159,21 +220,23 @@ verify_installation() {
     fi
 }
 
-# Main installation flow
-main() {
-    debug "Starting installation..."
-    debug "Use local files: $USE_LOCAL"
-    
-    echo "Installing Claude CLI..."
-    [ "$USE_LOCAL" = true ] && echo "Installing from local repository"
-    [ "$USE_LOCAL" = false ] && echo "Installing from remote repository"
-    
-    check_dependencies
-    setup_directory
-    setup_credentials
-    install_files
-    configure_shell
-    verify_installation
-}
+# Check if running from curl pipe or local repo - must be after function definitions
+if [ -t 0 ] && [ -f "./bin/claude-cli" ]; then
+    USE_LOCAL=true
+    debug "Running from local repository"
+else
+    USE_LOCAL=false
+    debug "Running from remote installation"
+fi
 
-main "$@"
+# Main installation flow - at the very end after all functions are defined
+echo "Installing Claude CLI..."
+[ "$USE_LOCAL" = true ] && echo "Installing from local repository"
+[ "$USE_LOCAL" = false ] && echo "Installing from remote repository"
+
+check_dependencies
+setup_directory
+setup_credentials
+install_files
+configure_shell
+verify_installation
